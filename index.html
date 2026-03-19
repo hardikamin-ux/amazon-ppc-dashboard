@@ -122,6 +122,21 @@ tr:hover{background:var(--surface2)}
 .waterfall-col .wvalue{font-size:11px;font-weight:700;margin-bottom:4px}
 .spinner{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
+.action-panel{margin-top:24px;background:linear-gradient(135deg,#fefce8,#fff7ed);border:2px solid var(--accent2);border-radius:var(--radius);padding:24px;box-shadow:var(--shadow)}
+.action-panel h3{font-size:15px;font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:8px}
+.action-panel .action-desc{font-size:13px;color:var(--text-muted);margin-bottom:16px}
+.action-panel .action-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-bottom:16px}
+.action-item{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px 16px;display:flex;align-items:center;gap:12px}
+.action-item .a-icon{font-size:22px;flex-shrink:0}
+.action-item .a-info{flex:1}
+.action-item .a-title{font-size:13px;font-weight:600}
+.action-item .a-count{font-size:12px;color:var(--text-muted)}
+.action-btns{display:flex;gap:10px;flex-wrap:wrap}
+.action-btn{padding:10px 20px;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;display:inline-flex;align-items:center;gap:8px;transition:all .15s}
+.action-btn-amazon{background:var(--accent2);color:#fff}
+.action-btn-amazon:hover{opacity:.9}
+.action-btn-csv{background:var(--accent);color:#fff}
+.action-btn-csv:hover{opacity:.9}
 .fade-in{animation:fadeIn .3s ease-out}
 @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 @media print{.sidebar,.topbar{display:none!important}.main{margin-left:0!important}.view{display:block!important;page-break-after:always}}
@@ -813,6 +828,15 @@ function runOverview(){
       </tr>`).join('')}</tbody>
     </table>`;
 
+    // Action items for overview
+    const pauseCamps=camps.filter(c=>c.acos>getTargetAcos()*2&&c.spend>10);
+    const budgetCamps=camps.filter(c=>c.acos<getTargetAcos()*0.7&&c.spend>0);
+    window._overviewActionData={pause:pauseCamps.map(c=>({...c,budget:safe(c.dailyBudget)||50})),increaseBudget:budgetCamps.slice(0,20).map(c=>({...c,budget:safe(c.dailyBudget)||50}))};
+    document.getElementById('overviewContent').innerHTML+=buildActionPanel('overview',[
+      {icon:'⏸️',title:'Pause High-ACoS Campaigns',count:pauseCamps.length,desc:'ACoS > 2x target, burning budget'},
+      {icon:'📈',title:'Increase Budget (Top Performers)',count:Math.min(budgetCamps.length,20),desc:'Low ACoS, good ROAS — room to scale'}
+    ]);
+
     btn.disabled=false;btn.innerHTML='<span class="play-icon">▶</span> Run Analysis';
   },100);
 }
@@ -993,6 +1017,22 @@ function runCampaigns(){
       ]},options:{responsive:true,indexAxis:'y',plugins:{datalabels:{display:false},legend:{display:false}},scales:{x:{beginAtZero:true}}}
     });
 
+    // Campaign action items
+    const target=getTargetAcos();
+    const pauseC=camps.filter(c=>c.acos>target*2&&c.spend>5);
+    const scaleC=camps.filter(c=>c.acos<target*0.6&&c.acos>0);
+    const reduceC=camps.filter(c=>c.acos>target*1.3&&c.acos<=target*2&&c.spend>10);
+    window._campaignActionData={
+      pause:pauseC.map(c=>({...c,budget:safe(c.dailyBudget)||50})),
+      scaleBudget:scaleC.slice(0,20).map(c=>({...c,budget:safe(c.dailyBudget)||50})),
+      reduceBudget:reduceC.map(c=>({...c,budget:safe(c.dailyBudget)||50}))
+    };
+    document.getElementById('campaignsContent').innerHTML+=buildActionPanel('campaigns',[
+      {icon:'⏸️',title:'Pause Campaigns',count:pauseC.length,desc:'ACoS > 2x target'},
+      {icon:'📈',title:'Scale Budget +30%',count:Math.min(scaleC.length,20),desc:'ACoS well below target'},
+      {icon:'📉',title:'Reduce Budget -30%',count:reduceC.length,desc:'ACoS moderately above target'}
+    ]);
+
     btn.disabled=false;btn.innerHTML='<span class="play-icon">▶</span> Run Analysis';
   },100);
 }
@@ -1102,8 +1142,18 @@ function runKeywords(){
       options:{responsive:true,plugins:{datalabels:{display:false},tooltip:{callbacks:{label:ctx=>scatterData[ctx.dataIndex]?.label+' | Spend: '+fmtC(ctx.raw.x)+' | ACoS: '+fmtP(ctx.raw.y)}}},scales:{x:{title:{display:true,text:'Spend'}},y:{title:{display:true,text:'ACoS %'}}}}
     });
 
-    // Store for export
+    // Store for export & build action panel
     window._kwExportData=kws;
+    window._keywordActionData=kws;
+    const wasted=kws.filter(k=>k.flag==='wasted');
+    const harvest=kws.filter(k=>k.flag==='harvest');
+    const scale=kws.filter(k=>k.flag==='scale');
+    document.getElementById('keywordsContent').innerHTML+=buildActionPanel('keywords',[
+      {icon:'🚫',title:'Add Negative Keywords',count:wasted.length,desc:'High spend, zero conversions'},
+      {icon:'🎯',title:'Harvest to Exact Match',count:harvest.length,desc:'Converting broad/phrase → create exact'},
+      {icon:'⬆️',title:'Increase Bids +20%',count:scale.length,desc:'Low ACoS top performers'}
+    ]);
+
     btn.disabled=false;btn.innerHTML='<span class="play-icon">▶</span> Run Analysis';
   },100);
 }
@@ -1136,6 +1186,145 @@ function downloadCSV(content,filename){
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');a.href=url;a.download=filename;a.click();URL.revokeObjectURL(url);
 }
+
+// ─── ACTION PANEL BUILDER (per-tab Amazon bulk sheet exports) ───
+
+// Amazon Bulk Sheet headers (SP format)
+const BULK_HEADERS='Record Type,Campaign Name,Campaign Daily Budget,Campaign Start Date,Campaign End Date,Campaign Targeting Type,Ad Group Name,Ad Group Default Bid,Keyword,Match Type,SKU,ASIN,Campaign Status,Ad Group Status,Status,Bid,Operation';
+
+function buildActionPanel(tabName, actions){
+  // actions = [{icon,title,count,desc}], plus exportFn references
+  const items=actions.filter(a=>a.count>0);
+  if(!items.length)return'<div class="action-panel"><h3>🚀 Actions</h3><p class="action-desc">No actionable items found based on current thresholds.</p></div>';
+  const total=items.reduce((s,a)=>s+a.count,0);
+  return `<div class="action-panel">
+    <h3>🚀 Actions — ${total} items ready for bulk upload</h3>
+    <p class="action-desc">Download an Amazon-compatible bulk sheet to apply these changes directly in your Amazon Ads console.</p>
+    <div class="action-grid">${items.map(a=>`
+      <div class="action-item">
+        <div class="a-icon">${a.icon}</div>
+        <div class="a-info"><div class="a-title">${a.title}</div><div class="a-count">${a.count} items — ${a.desc}</div></div>
+      </div>
+    `).join('')}</div>
+    <div class="action-btns">
+      <button class="action-btn action-btn-amazon" onclick="downloadBulkActions_${tabName}('amazon')">📥 Download Amazon Bulk Sheet</button>
+      <button class="action-btn action-btn-csv" onclick="downloadBulkActions_${tabName}('csv')">📄 Download Simple CSV</button>
+    </div>
+  </div>`;
+}
+
+// ── Overview tab actions: pause underperforming campaigns ──
+window._overviewActionData=null;
+window.downloadBulkActions_overview=function(format){
+  const d=window._overviewActionData;if(!d)return;
+  if(format==='amazon'){
+    let csv=BULK_HEADERS+'\n';
+    d.pause.forEach(c=>csv+=`Campaign,${c.name},,,,,,,,,,,paused,,,,Update\n`);
+    d.increaseBudget.forEach(c=>csv+=`Campaign,${c.name},${(c.budget*1.3).toFixed(2)},,,,,,,,,,enabled,,,,Update\n`);
+    downloadCSV(csv,'overview-campaign-actions-bulk.csv');
+  } else {
+    let csv='Campaign,Action,Current ACoS,Target ACoS,Current Budget,Suggested Budget,Spend,Sales,Reason\n';
+    d.pause.forEach(c=>csv+=`"${c.name}",Pause,${c.acos.toFixed(1)}%,${getTargetAcos()}%,,,${c.spend.toFixed(2)},${c.sales.toFixed(2)},ACoS too high\n`);
+    d.increaseBudget.forEach(c=>csv+=`"${c.name}",Increase Budget,${c.acos.toFixed(1)}%,${getTargetAcos()}%,${c.budget.toFixed(2)},${(c.budget*1.3).toFixed(2)},${c.spend.toFixed(2)},${c.sales.toFixed(2)},Good ACoS but budget capped\n`);
+    downloadCSV(csv,'overview-campaign-actions.csv');
+  }
+};
+
+// ── Campaign tab actions: pause/enable campaigns, change budgets ──
+window._campaignActionData=null;
+window.downloadBulkActions_campaigns=function(format){
+  const d=window._campaignActionData;if(!d)return;
+  if(format==='amazon'){
+    let csv=BULK_HEADERS+'\n';
+    d.pause.forEach(c=>csv+=`Campaign,${c.name},,,,,,,,,,,paused,,,,Update\n`);
+    d.scaleBudget.forEach(c=>csv+=`Campaign,${c.name},${(c.budget*1.3).toFixed(2)},,,,,,,,,,enabled,,,,Update\n`);
+    d.reduceBudget.forEach(c=>csv+=`Campaign,${c.name},${(c.budget*0.7).toFixed(2)},,,,,,,,,,enabled,,,,Update\n`);
+    downloadCSV(csv,'campaign-actions-bulk.csv');
+  } else {
+    let csv='Campaign,Action,ACoS,ROAS,Spend,Sales,Budget,Suggested Budget\n';
+    d.pause.forEach(c=>csv+=`"${c.name}",Pause,${c.acos.toFixed(1)}%,${c.roas.toFixed(2)}x,${c.spend.toFixed(2)},${c.sales.toFixed(2)},,\n`);
+    d.scaleBudget.forEach(c=>csv+=`"${c.name}",Increase Budget,${c.acos.toFixed(1)}%,${c.roas.toFixed(2)}x,${c.spend.toFixed(2)},${c.sales.toFixed(2)},${c.budget.toFixed(2)},${(c.budget*1.3).toFixed(2)}\n`);
+    d.reduceBudget.forEach(c=>csv+=`"${c.name}",Reduce Budget,${c.acos.toFixed(1)}%,${c.roas.toFixed(2)}x,${c.spend.toFixed(2)},${c.sales.toFixed(2)},${c.budget.toFixed(2)},${(c.budget*0.7).toFixed(2)}\n`);
+    downloadCSV(csv,'campaign-actions.csv');
+  }
+};
+
+// ── Keyword tab actions: negate, harvest, scale bids ──
+window._keywordActionData=null;
+window.downloadBulkActions_keywords=function(format){
+  const kws=window._keywordActionData;if(!kws)return;
+  const actionable=kws.filter(k=>k.flag==='wasted'||k.flag==='harvest'||k.flag==='scale');
+  if(format==='amazon'){
+    let csv=BULK_HEADERS+'\n';
+    actionable.forEach(k=>{
+      if(k.flag==='wasted')csv+=`Negative Keyword,"${k.campaign}",,,,,"${k.adGroup}",,${k.keyword},${k.matchType||'exact'},,,,,,enabled,,Create\n`;
+      else if(k.flag==='scale')csv+=`Keyword,"${k.campaign}",,,,,"${k.adGroup}",,${k.keyword},${k.matchType},,,,,,${(k.cpc*1.2).toFixed(2)},Update\n`;
+      else if(k.flag==='harvest')csv+=`Keyword,"${k.campaign}",,,,,"${k.adGroup}",,${k.keyword},exact,,,,,,${k.cpc.toFixed(2)},Create\n`;
+    });
+    downloadCSV(csv,'keyword-actions-bulk.csv');
+  } else {
+    let csv='Keyword,Match Type,Campaign,Ad Group,Flag,Action,Current CPC,Suggested Bid,Spend,Sales,ACoS,Orders\n';
+    actionable.forEach(k=>{
+      const action=k.flag==='wasted'?'Add as Negative':k.flag==='scale'?'Increase Bid 20%':k.flag==='harvest'?'Create Exact Match':'';
+      csv+=`"${k.keyword}",${k.matchType},"${k.campaign}","${k.adGroup}",${k.flagObj.label},${action},${k.cpc.toFixed(2)},${k.flag==='scale'?(k.cpc*1.2).toFixed(2):k.cpc.toFixed(2)},${k.spend.toFixed(2)},${k.sales.toFixed(2)},${k.acos.toFixed(2)},${k.orders}\n`;
+    });
+    downloadCSV(csv,'keyword-actions.csv');
+  }
+};
+
+// ── Bid & Budget tab actions: bid changes ──
+window._bidActionData=null;
+window.downloadBulkActions_bidbudget=function(format){
+  const items=window._bidActionData;if(!items)return;
+  const actionable=items.filter(k=>k.action!=='✅ On target');
+  if(format==='amazon'){
+    let csv=BULK_HEADERS+'\n';
+    actionable.forEach(k=>{
+      if(k.action.includes('Pause'))csv+=`Keyword,"${k.campaign||''}",,,,,"${k.adGroup||''}",,${k.keyword},${k.matchType||''},,,,,,paused,,Update\n`;
+      else csv+=`Keyword,"${k.campaign||''}",,,,,"${k.adGroup||''}",,${k.keyword},${k.matchType||''},,,,,,${k.suggestedBid.toFixed(2)},Update\n`;
+    });
+    downloadCSV(csv,'bid-actions-bulk.csv');
+  } else {
+    let csv='Keyword,Campaign,Ad Group,Match Type,Action,Current CPC,Current Bid,Suggested Bid,ACoS,Spend,Sales\n';
+    actionable.forEach(k=>{
+      csv+=`"${k.keyword}","${k.campaign||''}","${k.adGroup||''}",${k.matchType||''},${k.action},${k.cpc.toFixed(2)},${k.bid.toFixed(2)},${k.suggestedBid.toFixed(2)},${k.acos<999?k.acos.toFixed(1)+'%':'N/A'},${k.spend.toFixed(2)},${k.sales.toFixed(2)}\n`;
+    });
+    downloadCSV(csv,'bid-actions.csv');
+  }
+};
+
+// ── Product tab actions: pause unprofitable ASINs ──
+window._productActionData=null;
+window.downloadBulkActions_products=function(format){
+  const d=window._productActionData;if(!d)return;
+  if(format==='amazon'){
+    let csv=BULK_HEADERS+'\n';
+    d.pause.forEach(p=>csv+=`Product Ad,,,,,,,,,,,${p.asin},,,,paused,,Update\n`);
+    d.scaleBid.forEach(p=>csv+=`Product Ad,,,,,,,,,,,${p.asin},,,,enabled,,Update\n`);
+    downloadCSV(csv,'product-actions-bulk.csv');
+  } else {
+    let csv='ASIN,Action,ACoS,ROAS,Spend,Sales,Orders,COGS,Profit/Unit,Reason\n';
+    d.pause.forEach(p=>csv+=`${p.asin},Pause Ad,${p.acos.toFixed(1)}%,${p.roas.toFixed(2)}x,${p.spend.toFixed(2)},${p.sales.toFixed(2)},${p.orders},${p.cogs||'N/A'},${p.profitPerUnit?p.profitPerUnit.toFixed(2):'N/A'},${p.reason}\n`);
+    d.scaleBid.forEach(p=>csv+=`${p.asin},Scale Up,${p.acos.toFixed(1)}%,${p.roas.toFixed(2)}x,${p.spend.toFixed(2)},${p.sales.toFixed(2)},${p.orders},${p.cogs||'N/A'},${p.profitPerUnit?p.profitPerUnit.toFixed(2):'N/A'},Good performer\n`);
+    downloadCSV(csv,'product-actions.csv');
+  }
+};
+
+// ── Profitability tab actions: stop unprofitable, scale profitable ──
+window._profitActionData=null;
+window.downloadBulkActions_profitability=function(format){
+  const d=window._profitActionData;if(!d)return;
+  if(format==='amazon'){
+    let csv=BULK_HEADERS+'\n';
+    d.stop.forEach(p=>csv+=`Product Ad,,,,,,,,,,,${p.asin},,,,paused,,Update\n`);
+    downloadCSV(csv,'profitability-actions-bulk.csv');
+  } else {
+    let csv='ASIN,Action,Actual ACoS,Break-Even ACoS,Profit/Unit,Total Profit,Spend,Sales\n';
+    d.stop.forEach(p=>csv+=`${p.asin},Pause (Unprofitable),${p.acos.toFixed(1)}%,${p.breakEvenAcos.toFixed(1)}%,${p.profitPerUnit.toFixed(2)},${p.totalProfit.toFixed(2)},${p.spend.toFixed(2)},${p.sales.toFixed(2)}\n`);
+    d.scale.forEach(p=>csv+=`${p.asin},Scale Up (Profitable),${p.acos.toFixed(1)}%,${p.breakEvenAcos.toFixed(1)}%,${p.profitPerUnit.toFixed(2)},${p.totalProfit.toFixed(2)},${p.spend.toFixed(2)},${p.sales.toFixed(2)}\n`);
+    downloadCSV(csv,'profitability-actions.csv');
+  }
+};
 
 // ─── BID & BUDGET OPTIMIZATION ───
 function runBidBudget(){
@@ -1235,6 +1424,22 @@ function runBidBudget(){
       });
     }
 
+    // Bid & budget action items
+    const increaseB=bidItems.filter(k=>k.action.includes('Increase'));
+    const decreaseB=bidItems.filter(k=>k.action.includes('Decrease'));
+    const pauseB=bidItems.filter(k=>k.action.includes('Pause'));
+    window._bidActionData=bidItems.map(k=>({...k,campaign:k._raw?.campaignName||'',adGroup:k._raw?.adGroupName||'',matchType:k._raw?.matchType||''}));
+    // Try to get campaign/adGroup from original records
+    window._bidActionData=bidItems.map(k=>{
+      const orig=records.find(r=>(r.keyword||r.asin)===k.keyword);
+      return{...k,campaign:orig?.campaignName||'',adGroup:orig?.adGroupName||'',matchType:orig?.matchType||''};
+    });
+    document.getElementById('bidbudgetContent').innerHTML+=buildActionPanel('bidbudget',[
+      {icon:'⬆️',title:'Increase Bids',count:increaseB.length,desc:'Low ACoS, underperforming on impression share'},
+      {icon:'⬇️',title:'Decrease Bids',count:decreaseB.length,desc:'High ACoS, overbidding'},
+      {icon:'⏸️',title:'Pause / Negate',count:pauseB.length,desc:'Spending with zero conversions'}
+    ]);
+
     btn.disabled=false;btn.innerHTML='<span class="play-icon">▶</span> Run Analysis';
   },100);
 }
@@ -1305,6 +1510,16 @@ function runProducts(){
         {label:'Spend',data:top10.map(p=>p.spend),backgroundColor:'#dc2626'}
       ]},options:{responsive:true,plugins:{datalabels:{display:false},legend:{position:'top'}},scales:{y:{beginAtZero:true}}}
     });
+
+    // Product action items
+    const t=getTargetAcos();
+    const pauseP=prods.filter(p=>(p.acos>t*2&&p.spend>10)||(p.spend>20&&p.orders===0)).map(p=>({...p,reason:p.orders===0?'Zero conversions':'ACoS > 2x target'}));
+    const scaleP=prods.filter(p=>p.acos>0&&p.acos<t*0.6&&p.orders>=3);
+    window._productActionData={pause:pauseP,scaleBid:scaleP};
+    document.getElementById('productsContent').innerHTML+=buildActionPanel('products',[
+      {icon:'⏸️',title:'Pause Underperforming ASINs',count:pauseP.length,desc:'High ACoS or zero conversions'},
+      {icon:'🚀',title:'Scale Top Performers',count:scaleP.length,desc:'Low ACoS with consistent orders'}
+    ]);
 
     btn.disabled=false;btn.innerHTML='<span class="play-icon">▶</span> Run Analysis';
   },100);
@@ -1457,6 +1672,15 @@ function runProfitability(){
       type:'bar',data:{labels:top15.map(c=>c.name.substring(0,25)),datasets:[{label:'ROI %',data:top15.map(c=>c.roi),backgroundColor:top15.map(c=>c.roi>0?'rgba(22,163,74,.7)':'rgba(220,38,38,.7)')}]},
       options:{responsive:true,indexAxis:'y',plugins:{datalabels:{display:false},legend:{display:false}},scales:{x:{beginAtZero:false}}}
     });
+
+    // Profitability action items
+    const unprofitable=prods.filter(p=>p.cogs>0&&p.acos>p.breakEvenAcos&&p.spend>5);
+    const profitable=prods.filter(p=>p.cogs>0&&p.acos<p.breakEvenAcos*0.7&&p.orders>=2);
+    window._profitActionData={stop:unprofitable,scale:profitable};
+    document.getElementById('profitabilityContent').innerHTML+=buildActionPanel('profitability',[
+      {icon:'🛑',title:'Pause Unprofitable ASINs',count:unprofitable.length,desc:'Actual ACoS exceeds break-even ACoS'},
+      {icon:'💰',title:'Scale Profitable ASINs',count:profitable.length,desc:'ACoS well below break-even, profitable'}
+    ]);
 
     btn.disabled=false;btn.innerHTML='<span class="play-icon">▶</span> Run Analysis';
   },100);
